@@ -2,11 +2,12 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats;
+using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Processing;
-using System.Drawing;
-using System.IO;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Numerics;
 using System.Reflection;
 using System.Text.Json;
 
@@ -44,7 +45,6 @@ namespace dalleframecon.Handlers
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
 
-
             _logger.LogDebug("Generating image...");
             using HttpClient httpClient = new HttpClient();
             HttpResponseMessage response = await httpClient.SendAsync(request);
@@ -55,24 +55,127 @@ namespace dalleframecon.Handlers
             }
 
             OpenAiImageRequestResponse content = await response.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
-
             
-            string b64 = content.data[0].b64_json;
-            string fileName = $"{DateTime.Now.ToString("yyyyMMddTHHmmss")}.png";
-            string filePath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), fileName);
+            string timestamp = DateTime.Now.ToString("yyyyMMddTHHmmss");
+            string fileNameOriginal = $"{timestamp}_orig.png";
+            string fileNameLeft = $"{timestamp}_left.png";
+            string fileNameLeftFinal = $"{timestamp}_left_final.png";
+            string fileNameRight = $"{timestamp}_right.png";
+            string fileNameRightFinal = $"{timestamp}_right_final.png";
+            string fileNameFinal = $"{timestamp}_final.png";
+            string fileDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            
+            string filePathOriginal = Path.Combine(fileDirectory, fileNameOriginal);
+            string filePathLeft = Path.Combine(fileDirectory, fileNameLeft);
+            string filePathLeftFinal = Path.Combine(fileDirectory, fileNameLeftFinal);
+            string filePathRight = Path.Combine(fileDirectory, fileNameRight);
+            string filePathRightFinal = Path.Combine(fileDirectory, fileNameRightFinal);
+            string filePathFinal = Path.Combine(fileDirectory, fileNameFinal);
 
-            _logger.LogDebug($"Saving image to {filePath}");
-            File.WriteAllBytes(filePath, Convert.FromBase64String(b64));
+            PngEncoder pngEncoder = new PngEncoder() { ColorType = PngColorType.RgbWithAlpha };
 
-            // we need to add 796 pixels in total width = 398 pixels to each side.
+            _logger.LogDebug($"Saving first image to {filePathOriginal}");
+            File.WriteAllBytes(filePathOriginal, Convert.FromBase64String(content.data[0].b64_json));
 
-            using Image image = Image.Load(filePath);
-            int width = 1820;
-            int height = 1024;
-            image.Mutate(context => context.Resize(width, height, false));
-            image.Save(filePath);
+            {
+                // Re-encode to RGBA
+                using Image imageOriginal = Image.Load(filePathOriginal);
+                await imageOriginal.SaveAsPngAsync(filePathOriginal, pngEncoder);
 
-            return filePath;
+                int width = 1820;
+                int height = 1024;
+
+                using Image imageLeftPad = Image.Load(filePathOriginal);
+                imageLeftPad.Mutate(c => c.Pad(width, height, Color.Transparent).Crop(new Rectangle(0, 0, 1024, 1024)));
+                await imageLeftPad.SaveAsPngAsync(filePathLeft, pngEncoder);
+
+                using Image imageRightPad = Image.Load(filePathOriginal);
+                imageRightPad.Mutate(c => c.Pad(width, height, Color.Transparent).Crop(new Rectangle(1820 - 1024, 0, 1024, 1024)));
+                await imageRightPad.SaveAsPngAsync(filePathRight, pngEncoder);
+            }
+
+            //////////////////
+            ///
+
+            {
+                using MultipartFormDataContent leftFormContent = new MultipartFormDataContent();
+                StreamContent leftFileStream = new StreamContent(File.OpenRead(filePathLeft));
+                leftFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+
+                leftFormContent.Add(leftFileStream, name: "image", fileName: fileNameLeft);
+                leftFormContent.Add(new StringContent(input), "prompt");
+                leftFormContent.Add(new StringContent("1"), "n");
+                leftFormContent.Add(new StringContent("1024x1024"), "size");
+                leftFormContent.Add(new StringContent("b64_json"), "response_format");
+                leftFormContent.Add(new StringContent("adribona"), "user");
+
+                using HttpRequestMessage leftRequest = new HttpRequestMessage()
+                {
+                    Method = HttpMethod.Post,
+                    RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
+                    Content = leftFormContent
+                };
+                leftRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
+
+                HttpResponseMessage leftResponse = await httpClient.SendAsync(leftRequest);
+                if (!leftResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"{leftResponse.StatusCode}: {leftResponse.ReasonPhrase}");
+                    string error = await leftResponse.Content.ReadAsStringAsync();
+                    return string.Empty;
+                }
+
+                OpenAiImageRequestResponse leftContent = await leftResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
+                _logger.LogDebug($"Saving left image to {filePathLeftFinal}");
+                File.WriteAllBytes(filePathLeftFinal, Convert.FromBase64String(leftContent.data[0].b64_json));
+            }
+
+            ///////////////
+            ///
+            {
+                using MultipartFormDataContent rightFormContent = new MultipartFormDataContent();
+                StreamContent rightFileStream = new StreamContent(File.OpenRead(filePathRight));
+                rightFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+
+                rightFormContent.Add(rightFileStream, name: "image", fileName: fileNameRight);
+                rightFormContent.Add(new StringContent(input), "prompt");
+                rightFormContent.Add(new StringContent("1"), "n");
+                rightFormContent.Add(new StringContent("1024x1024"), "size");
+                rightFormContent.Add(new StringContent("b64_json"), "response_format");
+                rightFormContent.Add(new StringContent("adribona"), "user");
+
+                using HttpRequestMessage rightRequest = new HttpRequestMessage()
+                {
+                    Method = HttpMethod.Post,
+                    RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
+                    Content = rightFormContent
+                };
+                rightRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
+
+                HttpResponseMessage rightResponse = await httpClient.SendAsync(rightRequest);
+                if (!rightResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"{rightResponse.StatusCode}: {rightResponse.ReasonPhrase}");
+                    string error = await rightResponse.Content.ReadAsStringAsync();
+                    return string.Empty;
+                }
+
+                OpenAiImageRequestResponse rightContent = await rightResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
+                _logger.LogDebug($"Saving right image to {fileNameRightFinal}");
+                File.WriteAllBytes(filePathRightFinal, Convert.FromBase64String(rightContent.data[0].b64_json));
+            }
+
+            //////////////
+            ///
+            using Image leftFinal = Image.Load(filePathLeftFinal);
+            using Image rightFinal = Image.Load(filePathRightFinal);
+            using Image final = Image.Load(filePathOriginal);
+
+            final.Mutate(c => c.Pad(1820, 1024, Color.Transparent).DrawImage(leftFinal, new Point(0, 0), 1).DrawImage(rightFinal, new Point(1820 - 1024, 0), 1));
+            _logger.LogDebug($"Saving final image to {fileNameRightFinal}");
+            await final.SaveAsPngAsync(filePathFinal, pngEncoder);
+
+            return filePathFinal;
         }
         
         private class OpenAiImageRequestResponse

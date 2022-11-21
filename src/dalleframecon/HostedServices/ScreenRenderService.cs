@@ -2,10 +2,15 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NetCoreAudio;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Png;
+using SixLabors.ImageSharp.Processing;
 using System.Diagnostics;
-using System.Drawing;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Numerics;
 using System.Reflection;
+using System.Text.Json;
 
 namespace dalleframecon.HostedServices
 {
@@ -53,7 +58,8 @@ namespace dalleframecon.HostedServices
         {
             while (true)
             {
-                // Wait for wake word or phrase
+                //Wait for wake word or phrase
+
                 _logger.LogDebug("Waiting for wake word...");
                 if (!await _wakeWordListener.WaitForWakeWordAsync(cancellationToken))
                 {
@@ -65,8 +71,7 @@ namespace dalleframecon.HostedServices
                 string userMessage = await _listener.ListenAsync(cancellationToken);
 
                 string filePath = await _dalle2Handler.ProcessAsync(userMessage, cancellationToken);
-
-                
+                //string filePath = await _dalle2Handler.ProcessAsync("A 3D render of two astronauts shaking hands in a mid-century modern living room.", cancellationToken);
 
                 Process.Start(new ProcessStartInfo()
                 {
