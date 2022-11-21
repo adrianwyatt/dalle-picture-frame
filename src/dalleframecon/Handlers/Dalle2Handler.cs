@@ -41,7 +41,7 @@ namespace dalleframecon.Handlers
             {
                 Method = HttpMethod.Post,
                 RequestUri = new Uri("https://api.openai.com/v1/images/generations"),
-                Content = JsonContent.Create(openAiRequest, MediaTypeHeaderValue.Parse("application/json"), JsonSerializerOptions.Default)            
+                Content = JsonContent.Create(openAiRequest, MediaTypeHeaderValue.Parse("application/json"), JsonSerializerOptions.Default)
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
 
@@ -55,7 +55,7 @@ namespace dalleframecon.Handlers
             }
 
             OpenAiImageRequestResponse content = await response.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
-            
+
             string timestamp = DateTime.Now.ToString("yyyyMMddTHHmmss");
             string fileNameOriginal = $"{timestamp}_orig.png";
             string fileNameLeft = $"{timestamp}_left.png";
@@ -64,7 +64,7 @@ namespace dalleframecon.Handlers
             string fileNameRightFinal = $"{timestamp}_right_final.png";
             string fileNameFinal = $"{timestamp}_final.png";
             string fileDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            
+
             string filePathOriginal = Path.Combine(fileDirectory, fileNameOriginal);
             string filePathLeft = Path.Combine(fileDirectory, fileNameLeft);
             string filePathLeftFinal = Path.Combine(fileDirectory, fileNameLeftFinal);
@@ -97,73 +97,83 @@ namespace dalleframecon.Handlers
             //////////////////
             ///
 
+
+            using MultipartFormDataContent leftFormContent = new MultipartFormDataContent();
+            StreamContent leftFileStream = new StreamContent(File.OpenRead(filePathLeft));
+            leftFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+
+            leftFormContent.Add(leftFileStream, name: "image", fileName: fileNameLeft);
+            leftFormContent.Add(new StringContent(input), "prompt");
+            leftFormContent.Add(new StringContent("1"), "n");
+            leftFormContent.Add(new StringContent("1024x1024"), "size");
+            leftFormContent.Add(new StringContent("b64_json"), "response_format");
+            leftFormContent.Add(new StringContent("adribona"), "user");
+
+            using HttpRequestMessage leftRequest = new HttpRequestMessage()
             {
-                using MultipartFormDataContent leftFormContent = new MultipartFormDataContent();
-                StreamContent leftFileStream = new StreamContent(File.OpenRead(filePathLeft));
-                leftFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+                Method = HttpMethod.Post,
+                RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
+                Content = leftFormContent
+            };
+            leftRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
 
-                leftFormContent.Add(leftFileStream, name: "image", fileName: fileNameLeft);
-                leftFormContent.Add(new StringContent(input), "prompt");
-                leftFormContent.Add(new StringContent("1"), "n");
-                leftFormContent.Add(new StringContent("1024x1024"), "size");
-                leftFormContent.Add(new StringContent("b64_json"), "response_format");
-                leftFormContent.Add(new StringContent("adribona"), "user");
+            using HttpClient leftHttpClient = new HttpClient();
+            Task<HttpResponseMessage> leftResponseTask = leftHttpClient.SendAsync(leftRequest);
 
-                using HttpRequestMessage leftRequest = new HttpRequestMessage()
-                {
-                    Method = HttpMethod.Post,
-                    RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
-                    Content = leftFormContent
-                };
-                leftRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
 
-                HttpResponseMessage leftResponse = await httpClient.SendAsync(leftRequest);
-                if (!leftResponse.IsSuccessStatusCode)
-                {
-                    _logger.LogError($"{leftResponse.StatusCode}: {leftResponse.ReasonPhrase}");
-                    string error = await leftResponse.Content.ReadAsStringAsync();
-                    return string.Empty;
-                }
-
-                OpenAiImageRequestResponse leftContent = await leftResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
-                _logger.LogDebug($"Saving left image to {filePathLeftFinal}");
-                File.WriteAllBytes(filePathLeftFinal, Convert.FromBase64String(leftContent.data[0].b64_json));
-            }
 
             ///////////////
             ///
+
+            using MultipartFormDataContent rightFormContent = new MultipartFormDataContent();
+            StreamContent rightFileStream = new StreamContent(File.OpenRead(filePathRight));
+            rightFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+
+            rightFormContent.Add(rightFileStream, name: "image", fileName: fileNameRight);
+            rightFormContent.Add(new StringContent(input), "prompt");
+            rightFormContent.Add(new StringContent("1"), "n");
+            rightFormContent.Add(new StringContent("1024x1024"), "size");
+            rightFormContent.Add(new StringContent("b64_json"), "response_format");
+            rightFormContent.Add(new StringContent("adribona"), "user");
+
+            using HttpRequestMessage rightRequest = new HttpRequestMessage()
             {
-                using MultipartFormDataContent rightFormContent = new MultipartFormDataContent();
-                StreamContent rightFileStream = new StreamContent(File.OpenRead(filePathRight));
-                rightFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+                Method = HttpMethod.Post,
+                RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
+                Content = rightFormContent
+            };
+            rightRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
 
-                rightFormContent.Add(rightFileStream, name: "image", fileName: fileNameRight);
-                rightFormContent.Add(new StringContent(input), "prompt");
-                rightFormContent.Add(new StringContent("1"), "n");
-                rightFormContent.Add(new StringContent("1024x1024"), "size");
-                rightFormContent.Add(new StringContent("b64_json"), "response_format");
-                rightFormContent.Add(new StringContent("adribona"), "user");
+            using HttpClient rightHttpClient = new HttpClient();
+            Task<HttpResponseMessage> rightResponseTask = rightHttpClient.SendAsync(rightRequest);
 
-                using HttpRequestMessage rightRequest = new HttpRequestMessage()
-                {
-                    Method = HttpMethod.Post,
-                    RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
-                    Content = rightFormContent
-                };
-                rightRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
+            Task.WaitAll(leftResponseTask, rightResponseTask);
 
-                HttpResponseMessage rightResponse = await httpClient.SendAsync(rightRequest);
-                if (!rightResponse.IsSuccessStatusCode)
-                {
-                    _logger.LogError($"{rightResponse.StatusCode}: {rightResponse.ReasonPhrase}");
-                    string error = await rightResponse.Content.ReadAsStringAsync();
-                    return string.Empty;
-                }
+            HttpResponseMessage leftResponse = await leftResponseTask;
+            HttpResponseMessage rightResponse = await rightResponseTask;
 
-                OpenAiImageRequestResponse rightContent = await rightResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
-                _logger.LogDebug($"Saving right image to {fileNameRightFinal}");
-                File.WriteAllBytes(filePathRightFinal, Convert.FromBase64String(rightContent.data[0].b64_json));
+            if (!leftResponse.IsSuccessStatusCode)
+            {
+                _logger.LogError($"{leftResponse.StatusCode}: {leftResponse.ReasonPhrase}");
+                string error = await leftResponse.Content.ReadAsStringAsync();
+                return string.Empty;
             }
+
+            OpenAiImageRequestResponse leftContent = await leftResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
+            _logger.LogDebug($"Saving left image to {filePathLeftFinal}");
+            File.WriteAllBytes(filePathLeftFinal, Convert.FromBase64String(leftContent.data[0].b64_json));
+
+            if (!rightResponse.IsSuccessStatusCode)
+            {
+                _logger.LogError($"{rightResponse.StatusCode}: {rightResponse.ReasonPhrase}");
+                string error = await rightResponse.Content.ReadAsStringAsync();
+                return string.Empty;
+            }
+
+            OpenAiImageRequestResponse rightContent = await rightResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
+            _logger.LogDebug($"Saving right image to {fileNameRightFinal}");
+            File.WriteAllBytes(filePathRightFinal, Convert.FromBase64String(rightContent.data[0].b64_json));
+
 
             //////////////
             ///
@@ -177,18 +187,18 @@ namespace dalleframecon.Handlers
 
             return filePathFinal;
         }
-        
+
         private class OpenAiImageRequestResponse
         {
             public int created { get; set; }
             public DataItem[] data { get; set; }
 
-            public class DataItem 
-            { 
+            public class DataItem
+            {
                 public string b64_json { get; set; }
                 public string url { get; set; }
             }
-            
+
         }
 
         private class OpenAiImageRequestContent
@@ -197,7 +207,7 @@ namespace dalleframecon.Handlers
             /// A text description of the desired image(s). The maximum length is 1000 characters.
             /// </summary>
             public string prompt { get; set; }
-            
+
             /// <summary>
             /// The number of images to generate. Must be between 1 and 10.
             /// </summary>
