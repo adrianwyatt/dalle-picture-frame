@@ -117,8 +117,7 @@ namespace dalleframecon.Handlers
             };
             leftRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
 
-            using HttpClient leftHttpClient = new HttpClient();
-            Task<HttpResponseMessage> leftResponseTask = leftHttpClient.SendAsync(leftRequest);
+            
 
 
 
@@ -144,11 +143,12 @@ namespace dalleframecon.Handlers
             };
             rightRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
 
+            using HttpClient leftHttpClient = new HttpClient();
             using HttpClient rightHttpClient = new HttpClient();
+            Task<HttpResponseMessage> leftResponseTask = leftHttpClient.SendAsync(leftRequest);
             Task<HttpResponseMessage> rightResponseTask = rightHttpClient.SendAsync(rightRequest);
-
             Task.WaitAll(leftResponseTask, rightResponseTask);
-
+            
             HttpResponseMessage leftResponse = await leftResponseTask;
             HttpResponseMessage rightResponse = await rightResponseTask;
 
