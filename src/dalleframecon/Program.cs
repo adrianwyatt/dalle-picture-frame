@@ -32,13 +32,10 @@ builder.ConfigureServices((context, services) =>
 
     services.AddSingleton<Dalle2Handler>();
 
-    // Add the listener
     services.AddSingleton<AzCognitiveServicesWakeWordListener>();
-
-    // Add the listener
     services.AddSingleton<AzCognitiveServicesListener>();
-
-    // Add the primary hosted service to start the loop.
+    services.AddSingleton<AzCognitiveServicesSpeaker>();
+    
     services.AddHostedService<ScreenRenderService>();
 });
 

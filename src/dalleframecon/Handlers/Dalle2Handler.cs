@@ -2,12 +2,10 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.Formats.Png;
 using SixLabors.ImageSharp.Processing;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Numerics;
 using System.Reflection;
 using System.Text.Json;
 
@@ -17,13 +15,16 @@ namespace dalleframecon.Handlers
     {
         private readonly ILogger<Dalle2Handler> _logger;
         private readonly OpenAiServiceOptions _options;
+        private readonly AzCognitiveServicesSpeaker _speaker;
 
         public Dalle2Handler(
             ILogger<Dalle2Handler> logger,
+            AzCognitiveServicesSpeaker speaker,
             IOptions<OpenAiServiceOptions> options)
         {
             _logger = logger;
             _options = options.Value;
+            _speaker = speaker;
         }
 
         public async Task<string> ProcessAsync(string input, CancellationToken cancellationToken)
@@ -46,6 +47,9 @@ namespace dalleframecon.Handlers
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
 
             _logger.LogDebug("Generating image...");
+            
+            _speaker.SpeakAsync("Sure thing, one moment.", cancellationToken); // don't wait, just talk.
+            
             using HttpClient httpClient = new HttpClient();
             HttpResponseMessage response = await httpClient.SendAsync(request);
             if (!response.IsSuccessStatusCode)
@@ -147,7 +151,8 @@ namespace dalleframecon.Handlers
             using HttpClient rightHttpClient = new HttpClient();
             Task<HttpResponseMessage> leftResponseTask = leftHttpClient.SendAsync(leftRequest);
             Task<HttpResponseMessage> rightResponseTask = rightHttpClient.SendAsync(rightRequest);
-            Task.WaitAll(leftResponseTask, rightResponseTask);
+            Task speakTask = _speaker.SpeakAsync("Just adding a few more details.", cancellationToken);
+            Task.WaitAll(speakTask, leftResponseTask, rightResponseTask);
             
             HttpResponseMessage leftResponse = await leftResponseTask;
             HttpResponseMessage rightResponse = await rightResponseTask;
@@ -185,6 +190,7 @@ namespace dalleframecon.Handlers
             _logger.LogDebug($"Saving final image to {fileNameRightFinal}");
             await final.SaveAsPngAsync(filePathFinal, pngEncoder);
 
+            _speaker.SpeakAsync("Here you go!", cancellationToken);
             return filePathFinal;
         }
 

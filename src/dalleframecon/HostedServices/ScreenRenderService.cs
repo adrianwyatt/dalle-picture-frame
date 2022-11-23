@@ -60,13 +60,13 @@ namespace dalleframecon.HostedServices
             {
                 //Wait for wake word or phrase
 
-                _logger.LogDebug("Waiting for wake word...");
+                _logger.LogInformation("Waiting for wake word...");
                 if (!await _wakeWordListener.WaitForWakeWordAsync(cancellationToken))
                 {
                     continue;
                 }
 
-                _logger.LogDebug("Listening...");
+                _logger.LogInformation("Listening...");
                 await _player.Play(_notificationSoundFilePath);
                 string userMessage = await _listener.ListenAsync(cancellationToken);
 
@@ -79,8 +79,6 @@ namespace dalleframecon.HostedServices
                     UseShellExecute = true
                 });
             }
-
-            
         }
     }
 }
