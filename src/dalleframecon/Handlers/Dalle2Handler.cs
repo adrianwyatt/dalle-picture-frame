@@ -67,7 +67,13 @@ namespace dalleframecon.Handlers
             string fileNameRight = $"{timestamp}_right.png";
             string fileNameRightFinal = $"{timestamp}_right_final.png";
             string fileNameFinal = $"{timestamp}_final.png";
-            string fileDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            string fileNameFinalTxt = $"{timestamp}_final.txt";
+            string fileDirectory = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "images");
+
+            if (!Directory.Exists(fileDirectory))
+            {
+                Directory.CreateDirectory(fileDirectory);
+            }
 
             string filePathOriginal = Path.Combine(fileDirectory, fileNameOriginal);
             string filePathLeft = Path.Combine(fileDirectory, fileNameLeft);
@@ -75,122 +81,146 @@ namespace dalleframecon.Handlers
             string filePathRight = Path.Combine(fileDirectory, fileNameRight);
             string filePathRightFinal = Path.Combine(fileDirectory, fileNameRightFinal);
             string filePathFinal = Path.Combine(fileDirectory, fileNameFinal);
+            string filePathFinalTxt = Path.Combine(fileDirectory, fileNameFinalTxt);
 
-            PngEncoder pngEncoder = new PngEncoder() { ColorType = PngColorType.RgbWithAlpha };
-
-            _logger.LogDebug($"Saving first image to {filePathOriginal}");
-            File.WriteAllBytes(filePathOriginal, Convert.FromBase64String(content.data[0].b64_json));
-
+            List<string> filesToCleanup = new List<string>()
             {
-                // Re-encode to RGBA
-                using Image imageOriginal = Image.Load(filePathOriginal);
-                await imageOriginal.SaveAsPngAsync(filePathOriginal, pngEncoder);
-
-                int width = 1820;
-                int height = 1024;
-
-                using Image imageLeftPad = Image.Load(filePathOriginal);
-                imageLeftPad.Mutate(c => c.Pad(width, height, Color.Transparent).Crop(new Rectangle(0, 0, 1024, 1024)));
-                await imageLeftPad.SaveAsPngAsync(filePathLeft, pngEncoder);
-
-                using Image imageRightPad = Image.Load(filePathOriginal);
-                imageRightPad.Mutate(c => c.Pad(width, height, Color.Transparent).Crop(new Rectangle(1820 - 1024, 0, 1024, 1024)));
-                await imageRightPad.SaveAsPngAsync(filePathRight, pngEncoder);
-            }
-
-            //////////////////
-            ///
-
-
-            using MultipartFormDataContent leftFormContent = new MultipartFormDataContent();
-            StreamContent leftFileStream = new StreamContent(File.OpenRead(filePathLeft));
-            leftFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-
-            leftFormContent.Add(leftFileStream, name: "image", fileName: fileNameLeft);
-            leftFormContent.Add(new StringContent(input), "prompt");
-            leftFormContent.Add(new StringContent("1"), "n");
-            leftFormContent.Add(new StringContent("1024x1024"), "size");
-            leftFormContent.Add(new StringContent("b64_json"), "response_format");
-            leftFormContent.Add(new StringContent("adribona"), "user");
-
-            using HttpRequestMessage leftRequest = new HttpRequestMessage()
-            {
-                Method = HttpMethod.Post,
-                RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
-                Content = leftFormContent
+                filePathOriginal,
+                filePathLeft,
+                filePathLeftFinal,
+                filePathRight,
+                filePathRightFinal,
             };
-            leftRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
 
-            
-
-
-
-            ///////////////
-            ///
-
-            using MultipartFormDataContent rightFormContent = new MultipartFormDataContent();
-            StreamContent rightFileStream = new StreamContent(File.OpenRead(filePathRight));
-            rightFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
-
-            rightFormContent.Add(rightFileStream, name: "image", fileName: fileNameRight);
-            rightFormContent.Add(new StringContent(input), "prompt");
-            rightFormContent.Add(new StringContent("1"), "n");
-            rightFormContent.Add(new StringContent("1024x1024"), "size");
-            rightFormContent.Add(new StringContent("b64_json"), "response_format");
-            rightFormContent.Add(new StringContent("adribona"), "user");
-
-            using HttpRequestMessage rightRequest = new HttpRequestMessage()
+            try
             {
-                Method = HttpMethod.Post,
-                RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
-                Content = rightFormContent
-            };
-            rightRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
+                PngEncoder pngEncoder = new PngEncoder() { ColorType = PngColorType.RgbWithAlpha };
 
-            using HttpClient leftHttpClient = new HttpClient();
-            using HttpClient rightHttpClient = new HttpClient();
-            Task<HttpResponseMessage> leftResponseTask = leftHttpClient.SendAsync(leftRequest);
-            Task<HttpResponseMessage> rightResponseTask = rightHttpClient.SendAsync(rightRequest);
-            Task speakTask = _speaker.SpeakAsync("Just adding a few more details.", cancellationToken);
-            Task.WaitAll(speakTask, leftResponseTask, rightResponseTask);
-            
-            HttpResponseMessage leftResponse = await leftResponseTask;
-            HttpResponseMessage rightResponse = await rightResponseTask;
+                _logger.LogDebug($"Saving first image to {filePathOriginal}");
+                File.WriteAllBytes(filePathOriginal, Convert.FromBase64String(content.data[0].b64_json));
 
-            if (!leftResponse.IsSuccessStatusCode)
-            {
-                _logger.LogError($"{leftResponse.StatusCode}: {leftResponse.ReasonPhrase}");
-                string error = await leftResponse.Content.ReadAsStringAsync();
-                return string.Empty;
+                {
+                    // Re-encode to RGBA
+                    using Image imageOriginal = Image.Load(filePathOriginal);
+                    await imageOriginal.SaveAsPngAsync(filePathOriginal, pngEncoder);
+
+                    int width = 1820;
+                    int height = 1024;
+
+                    using Image imageLeftPad = Image.Load(filePathOriginal);
+                    imageLeftPad.Mutate(c => c.Pad(width, height, Color.Transparent).Crop(new Rectangle(0, 0, 1024, 1024)));
+                    await imageLeftPad.SaveAsPngAsync(filePathLeft, pngEncoder);
+
+                    using Image imageRightPad = Image.Load(filePathOriginal);
+                    imageRightPad.Mutate(c => c.Pad(width, height, Color.Transparent).Crop(new Rectangle(1820 - 1024, 0, 1024, 1024)));
+                    await imageRightPad.SaveAsPngAsync(filePathRight, pngEncoder);
+                }
+
+                ///
+                /// Left
+                /// 
+                
+                using MultipartFormDataContent leftFormContent = new MultipartFormDataContent();
+                StreamContent leftFileStream = new StreamContent(File.OpenRead(filePathLeft));
+                leftFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+
+                leftFormContent.Add(leftFileStream, name: "image", fileName: fileNameLeft);
+                leftFormContent.Add(new StringContent(input), "prompt");
+                leftFormContent.Add(new StringContent("1"), "n");
+                leftFormContent.Add(new StringContent("1024x1024"), "size");
+                leftFormContent.Add(new StringContent("b64_json"), "response_format");
+                leftFormContent.Add(new StringContent("adribona"), "user");
+
+                using HttpRequestMessage leftRequest = new HttpRequestMessage()
+                {
+                    Method = HttpMethod.Post,
+                    RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
+                    Content = leftFormContent
+                };
+                leftRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
+
+
+
+
+
+                ///
+                /// Right
+                /// 
+
+                using MultipartFormDataContent rightFormContent = new MultipartFormDataContent();
+                StreamContent rightFileStream = new StreamContent(File.OpenRead(filePathRight));
+                rightFileStream.Headers.ContentType = new MediaTypeHeaderValue("image/png");
+
+                rightFormContent.Add(rightFileStream, name: "image", fileName: fileNameRight);
+                rightFormContent.Add(new StringContent(input), "prompt");
+                rightFormContent.Add(new StringContent("1"), "n");
+                rightFormContent.Add(new StringContent("1024x1024"), "size");
+                rightFormContent.Add(new StringContent("b64_json"), "response_format");
+                rightFormContent.Add(new StringContent("adribona"), "user");
+
+                using HttpRequestMessage rightRequest = new HttpRequestMessage()
+                {
+                    Method = HttpMethod.Post,
+                    RequestUri = new Uri("https://api.openai.com/v1/images/edits"),
+                    Content = rightFormContent
+                };
+                rightRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.Key);
+
+                using HttpClient leftHttpClient = new HttpClient();
+                using HttpClient rightHttpClient = new HttpClient();
+                Task<HttpResponseMessage> leftResponseTask = leftHttpClient.SendAsync(leftRequest);
+                Task<HttpResponseMessage> rightResponseTask = rightHttpClient.SendAsync(rightRequest);
+                Task speakTask = _speaker.SpeakAsync("Just adding a few more details.", cancellationToken);
+                Task.WaitAll(speakTask, leftResponseTask, rightResponseTask);
+
+                HttpResponseMessage leftResponse = await leftResponseTask;
+                HttpResponseMessage rightResponse = await rightResponseTask;
+
+                if (!leftResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"{leftResponse.StatusCode}: {leftResponse.ReasonPhrase}");
+                    string error = await leftResponse.Content.ReadAsStringAsync();
+                    return string.Empty;
+                }
+
+                OpenAiImageRequestResponse leftContent = await leftResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
+                _logger.LogDebug($"Saving left image to {filePathLeftFinal}");
+                File.WriteAllBytes(filePathLeftFinal, Convert.FromBase64String(leftContent.data[0].b64_json));
+
+                if (!rightResponse.IsSuccessStatusCode)
+                {
+                    _logger.LogError($"{rightResponse.StatusCode}: {rightResponse.ReasonPhrase}");
+                    string error = await rightResponse.Content.ReadAsStringAsync();
+                    return string.Empty;
+                }
+
+                OpenAiImageRequestResponse rightContent = await rightResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
+                _logger.LogDebug($"Saving right image to {fileNameRightFinal}");
+                File.WriteAllBytes(filePathRightFinal, Convert.FromBase64String(rightContent.data[0].b64_json));
+
+
+                ///
+                /// Assembled
+                ///
+
+                using Image leftFinal = Image.Load(filePathLeftFinal);
+                using Image rightFinal = Image.Load(filePathRightFinal);
+                using Image final = Image.Load(filePathOriginal);
+
+                final.Mutate(c => c.Pad(1820, 1024, Color.Transparent).DrawImage(leftFinal, new Point(0, 0), 1).DrawImage(rightFinal, new Point(1820 - 1024, 0), 1));
+                _logger.LogDebug($"Saving final image to {fileNameRightFinal}");
+                await final.SaveAsPngAsync(filePathFinal, pngEncoder);
+                await File.WriteAllTextAsync(filePathFinalTxt, input);
+                
+                _speaker.SpeakAsync("Here you go!", cancellationToken);
             }
-
-            OpenAiImageRequestResponse leftContent = await leftResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
-            _logger.LogDebug($"Saving left image to {filePathLeftFinal}");
-            File.WriteAllBytes(filePathLeftFinal, Convert.FromBase64String(leftContent.data[0].b64_json));
-
-            if (!rightResponse.IsSuccessStatusCode)
+            finally
             {
-                _logger.LogError($"{rightResponse.StatusCode}: {rightResponse.ReasonPhrase}");
-                string error = await rightResponse.Content.ReadAsStringAsync();
-                return string.Empty;
+                foreach (string fileToCleanup in filesToCleanup)
+                {
+                    File.Delete(fileToCleanup);
+                }
             }
-
-            OpenAiImageRequestResponse rightContent = await rightResponse.Content.ReadFromJsonAsync<OpenAiImageRequestResponse>(JsonSerializerOptions.Default, cancellationToken);
-            _logger.LogDebug($"Saving right image to {fileNameRightFinal}");
-            File.WriteAllBytes(filePathRightFinal, Convert.FromBase64String(rightContent.data[0].b64_json));
-
-
-            //////////////
-            ///
-            using Image leftFinal = Image.Load(filePathLeftFinal);
-            using Image rightFinal = Image.Load(filePathRightFinal);
-            using Image final = Image.Load(filePathOriginal);
-
-            final.Mutate(c => c.Pad(1820, 1024, Color.Transparent).DrawImage(leftFinal, new Point(0, 0), 1).DrawImage(rightFinal, new Point(1820 - 1024, 0), 1));
-            _logger.LogDebug($"Saving final image to {fileNameRightFinal}");
-            await final.SaveAsPngAsync(filePathFinal, pngEncoder);
-
-            _speaker.SpeakAsync("Here you go!", cancellationToken);
             return filePathFinal;
         }
 

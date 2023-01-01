@@ -10,6 +10,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace dalleframecon.HostedServices
@@ -56,6 +57,25 @@ namespace dalleframecon.HostedServices
 
         private async Task ExecuteAsync(CancellationToken cancellationToken)
         {
+            // Create slideshow txt file
+            string directory = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "images");
+            var images = new List<string>(Directory.GetFiles(directory, "*.png", SearchOption.TopDirectoryOnly));
+            images = images.OrderBy(x => Guid.NewGuid()).ToList(); // randomize order of images
+
+            string content = string.Join(Environment.NewLine, images);
+            string slideshowFilePath = Path.Combine(directory, "slideshow.txt");
+            if (File.Exists(slideshowFilePath))
+            {
+                File.Delete(slideshowFilePath);
+            }
+            File.WriteAllText(slideshowFilePath, content);
+
+            //Process fbiProcess = Process.Start(new ProcessStartInfo()
+            //{
+            //    FileName = ,
+            //    UseShellExecute = true
+            //});
+
             while (true)
             {
                 //Wait for wake word or phrase
@@ -69,15 +89,32 @@ namespace dalleframecon.HostedServices
                 _logger.LogInformation("Listening...");
                 await _player.Play(_notificationSoundFilePath);
                 string userMessage = await _listener.ListenAsync(cancellationToken);
-
+                
+                Console.WriteLine($"Drawing: \"{userMessage}\"");
+                
                 string filePath = await _dalle2Handler.ProcessAsync(userMessage, cancellationToken);
                 //string filePath = await _dalle2Handler.ProcessAsync("A 3D render of two astronauts shaking hands in a mid-century modern living room.", cancellationToken);
 
-                Process.Start(new ProcessStartInfo()
+                // Update slideshow txt file
+                directory = Path.GetDirectoryName(filePath);
+                images = new List<string>(Directory.GetFiles(directory, "*.png", SearchOption.TopDirectoryOnly));
+                images = images.OrderBy(x => Guid.NewGuid()).ToList(); // randomize order of images
+                slideshowFilePath = Path.Combine(directory, "slideshow.txt");
+                content = filePath + Environment.NewLine + string.Join(Environment.NewLine, images);
+                if (File.Exists(slideshowFilePath))
                 {
-                    FileName = filePath,
-                    UseShellExecute = true
-                });
+                    File.Delete(slideshowFilePath);
+                }
+                File.WriteAllText(slideshowFilePath, content);
+
+                //if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                //{
+                //    Process.Start(new ProcessStartInfo()
+                //    {
+                //        FileName = filePath,
+                //        UseShellExecute = true
+                //    });
+                //}
             }
         }
     }
