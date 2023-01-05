@@ -59,6 +59,7 @@ namespace dalleframecon.HostedServices
         private async Task ExecuteAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine("Executing...");
+            
             // Create slideshow txt file
             string directory = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "images");
             if (!Directory.Exists(directory)) {
@@ -75,16 +76,11 @@ namespace dalleframecon.HostedServices
             }
             File.WriteAllText(slideshowFilePath, content);
             StartSlideShow(slideshowFilePath);
-            //Process fbiProcess = Process.Start(new ProcessStartInfo()
-            //{
-            //    FileName = ,
-            //    UseShellExecute = true
-            //});
+           
             Console.WriteLine("Hello.");
             while (true)
             {
-                //Wait for wake word or phrase
-
+                // Wait for wake word/phrase
                 _logger.LogInformation("Waiting for wake word...");
                 if (!await _wakeWordListener.WaitForWakeWordAsync(cancellationToken))
                 {
@@ -98,8 +94,8 @@ namespace dalleframecon.HostedServices
                 Console.WriteLine($"Drawing: \"{userMessage}\"");
                 
                 string filePath = await _dalle2Handler.ProcessAsync(userMessage, cancellationToken);
-                //string filePath = await _dalle2Handler.ProcessAsync("A 3D render of two astronauts shaking hands in a mid-century modern living room.", cancellationToken);
                 Console.WriteLine(filePath);
+                
                 // Update slideshow txt file
                 directory = Path.GetDirectoryName(filePath);
                 images = new List<string>(Directory.GetFiles(directory, "*.png", SearchOption.TopDirectoryOnly));
@@ -125,7 +121,6 @@ namespace dalleframecon.HostedServices
         }
 
         private void StartSlideShow(string slideshowPath) {
-            //feh -Y -x -q -D 5 -B black -F -Z -r -f slideshow.txt
             slideshowProcess = Process.Start(new ProcessStartInfo()
             {
                 FileName = "feh",
