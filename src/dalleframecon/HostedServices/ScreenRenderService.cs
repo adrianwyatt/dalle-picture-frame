@@ -17,6 +17,7 @@ namespace dalleframecon.HostedServices
 {
     internal class ScreenRenderService : IHostedService
     {
+        private Process slideshowProcess;
         private readonly ILogger<ScreenRenderService> _logger;
         private Task _task;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
@@ -57,8 +58,12 @@ namespace dalleframecon.HostedServices
 
         private async Task ExecuteAsync(CancellationToken cancellationToken)
         {
+            Console.WriteLine("Executing...");
             // Create slideshow txt file
             string directory = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "images");
+            if (!Directory.Exists(directory)) {
+                Directory.CreateDirectory(directory);
+            }
             var images = new List<string>(Directory.GetFiles(directory, "*.png", SearchOption.TopDirectoryOnly));
             images = images.OrderBy(x => Guid.NewGuid()).ToList(); // randomize order of images
 
@@ -69,13 +74,13 @@ namespace dalleframecon.HostedServices
                 File.Delete(slideshowFilePath);
             }
             File.WriteAllText(slideshowFilePath, content);
-
+            StartSlideShow(slideshowFilePath);
             //Process fbiProcess = Process.Start(new ProcessStartInfo()
             //{
             //    FileName = ,
             //    UseShellExecute = true
             //});
-
+            Console.WriteLine("Hello.");
             while (true)
             {
                 //Wait for wake word or phrase
@@ -94,7 +99,7 @@ namespace dalleframecon.HostedServices
                 
                 string filePath = await _dalle2Handler.ProcessAsync(userMessage, cancellationToken);
                 //string filePath = await _dalle2Handler.ProcessAsync("A 3D render of two astronauts shaking hands in a mid-century modern living room.", cancellationToken);
-
+                Console.WriteLine(filePath);
                 // Update slideshow txt file
                 directory = Path.GetDirectoryName(filePath);
                 images = new List<string>(Directory.GetFiles(directory, "*.png", SearchOption.TopDirectoryOnly));
@@ -105,17 +110,28 @@ namespace dalleframecon.HostedServices
                 {
                     File.Delete(slideshowFilePath);
                 }
+
+                Console.WriteLine("===");
+                Console.WriteLine(content);
                 File.WriteAllText(slideshowFilePath, content);
 
-                //if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                //{
-                //    Process.Start(new ProcessStartInfo()
-                //    {
-                //        FileName = filePath,
-                //        UseShellExecute = true
-                //    });
-                //}
+                StopSlideShow();
+                StartSlideShow(slideshowFilePath);
             }
+        }
+
+        private void StopSlideShow() {
+            slideshowProcess.Kill(true);
+        }
+
+        private void StartSlideShow(string slideshowPath) {
+            //feh -Y -x -q -D 5 -B black -F -Z -r -f slideshow.txt
+            slideshowProcess = Process.Start(new ProcessStartInfo()
+            {
+                FileName = "feh",
+                Arguments = $"-Y -x -q -D 30 -B black -F -Z -r -f {slideshowPath}",
+                UseShellExecute = true
+            });
         }
     }
 }
